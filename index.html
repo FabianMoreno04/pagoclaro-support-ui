@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PagoClaro - Conciliación N3</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px}
+  input,button{padding:8px;font-size:1rem}
+  button{cursor:pointer}
+  .card{border:2px solid #ccc;border-radius:8px;padding:16px;margin-top:16px}
+  .CONSISTENT{border-color:#2e7d32}.RECONCILED{border-color:#1565c0}.MANUAL_REVIEW{border-color:#e65100}
+  .err{color:#b71c1c}
+</style>
+</head>
+<body>
+<h1>Conciliación de pagos</h1>
+<input id="ref" placeholder="PAY-BX17">
+<button id="btnDiag">Diagnosticar (sin cambios)</button>
+<button id="btnRecon">Conciliar</button>
+<div id="out"></div>
+<script>
+const API = "http://localhost:8080/api/support/payments";
+const out = document.getElementById("out");
+
+function line(parent, label, value) {
+  const p = document.createElement("p");
+  p.append(label + " ");
+  const b = document.createElement("b"); b.textContent = value; p.append(b);
+  parent.append(p);
+}
+
+async function run(action, method) {
+  const ref = document.getElementById("ref").value.trim().toUpperCase();
+  out.replaceChildren();
+  if (!ref) return;
+  if (action === "reconcile" && !confirm("¿Aplicar conciliación a " + ref + "? Ejecute antes el diagnóstico.")) return;
+  try {
+    const res = await fetch(`${API}/${encodeURIComponent(ref)}/${action}`, { method });
+    const d = await res.json();
+    if (!res.ok) { const p = document.createElement("p"); p.className = "err"; p.textContent = "Error: " + d.error; out.append(p); return; }
+    const card = document.createElement("div");
+    card.className = "card " + d.outcome;
+    const h = document.createElement("h3");
+    h.textContent = `${d.outcome} (${d.reasonCode})` + (d.dryRun ? " · simulación" : "");
+    card.append(h);
+    line(card, "Pago:", d.paymentRef);
+    line(card, "Estado:", `${d.statusBefore} → ${d.statusAfter}`);
+    line(card, "Débito neto:", `${d.netDebitBefore} → ${d.netDebitAfter}`);
+    line(card, "Reversos creados:", d.reversalsCreated);
+    if (d.outcome === "MANUAL_REVIEW") {
+      const w = document.createElement("p"); const b = document.createElement("b");
+      b.textContent = "Detenerse: requiere revisión manual."; w.append(b); card.append(w);
+    }
+    out.append(card);
+  } catch (e) {
+    const p = document.createElement("p"); p.className = "err"; p.textContent = "No se pudo contactar el backend."; out.append(p);
+  }
+}
+document.getElementById("btnDiag").onclick = () => run("diagnosis", "GET");
+document.getElementById("btnRecon").onclick = () => run("reconcile", "POST");
+</script>
+</body>
+</html>
